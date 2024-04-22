@@ -1,17 +1,19 @@
 import React, { useRef, useState } from 'react';
-import { TextField, Button, Box, Select, MenuItem } from '@mui/material';
+import { TextField, Button, Box, Select, MenuItem, CircularProgress } from '@mui/material';
 import { db } from '../config/firebase';
 import { collection, addDoc,getDocs,query,where } from 'firebase/firestore';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
 import Swal from 'sweetalert2';
 import emailjs from '@emailjs/browser';
- 
+
 const RegistroPrestador = () => {
  
     const formRef = useRef(null);
+    const [loading, setLoading] = useState(false);
+
     const [ formData, setFormData ] = useState({
-        email: '', 
+        to_name: '', 
         firstName: '', 
         lastName: '', 
         subject: '', 
@@ -24,25 +26,41 @@ const RegistroPrestador = () => {
 
     const onSubmit=async(values)=>{
         console.log(values);
-        try {
-            const docRef = await addDoc(collection(db, 'prestadores'), {
-                cuit: values.cuit,
-                nombre: values.nombre,
-                zona: values.zona,
-                email: values.mail,
-                habilitado: false
-            });    
-    
+        setLoading(true);
+        const querySnapshot = await getDocs(query(collection(db, 'prestadores'), where('cuit', '==', values.cuit)));
+
+        if (!querySnapshot.empty) {
+            // Si hay documentos que coinciden con el CIUT, mostrar un aviso
             Swal.fire({
-                icon: 'success',
-                title: '¡Documento registrado!',
-                text: `El ID del prestador es: ${docRef.id}`,
-              });
-            console.log('Documento registrado con ID: ', docRef.id);
-        } catch (error) {
-            console.error('Error al agregar el documento: ', error);
-        }
-    };
+                icon: 'error',
+                title: '¡Error!',
+                text: `El CUIT ${values.cuit} ya está registrado.`
+            });
+        } else {
+            try {
+                const docRef = await addDoc(collection(db, 'prestadores'), {
+                    cuit: values.cuit,
+                    nombre: values.nombre.toUpperCase(),
+                    domicilio: values.domicilio.toUpperCase(),
+                    localidad: values.localidad.toUpperCase(),
+                    zona: values.zona,
+                    email: values.mail,
+                    habilitado: false,
+                    created: new Date(),
+                });    
+        
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Documento registrado!',
+                    text: `El ID del prestador es: ${docRef.id}`,
+                });
+                console.log('Documento registrado con ID: ', docRef.id);
+            } catch (error) {
+                console.error('Error al agregar el documento: ', error);
+            }
+        };
+        setLoading(false);
+    }
 
     const validationSchema=Yup.object().shape({
         cuit: Yup.string().required('Numero de cuit es obligatorio').min(11,'debe tener 11 caracteres').max(11,'debe tener 11 caracteres'),
@@ -81,18 +99,15 @@ const RegistroPrestador = () => {
         }
         console.log(destino);
 
-        setFormData(
-            {
-                email: destino.email,
-                subject: '', 
-                message: `Su id de registro es el: ${destino}`  
-            }
-            )
         emailjs
         .send(
             "service_rkj7nub",
             'template_wgdnu7s',
-            formData,
+            {   from_name: "Sistemas Lalusidal",
+                to_name: destino.nombre,
+                message: `Su id de registro es el: ${destino.id}`,
+                email: destino.email,
+            },
             '89_9v2xhWTO5rOucD' 
         )
         .then(
@@ -110,7 +125,7 @@ const RegistroPrestador = () => {
     return (
 
         <Formik
-            initialValues={{cuit:'',nombre:'',zona:'',mail: ''}}
+            initialValues={{cuit:'',nombre:'',domicilio: '',localidad: '',zona:'',mail: ''}}
             onSubmit={onSubmit}
             validationSchema={validationSchema}
             innerRef={formRef}
@@ -149,6 +164,37 @@ const RegistroPrestador = () => {
 
                         </Box>
                         <Box sx={{mb:3}}>
+                            <TextField
+                                fullWidth
+                                label="Domicilio"
+                                variant="outlined"
+                                value={values.domicilio}
+                                name="domicilio"
+                                onChange={handleChange}
+                                required
+                            />
+                            {
+                                errors.domicilio && touched.domicilio && errors.domicilio
+                            }
+
+                        </Box>
+                        <Box sx={{mb:3}}>
+                            <TextField
+                                fullWidth
+                                label="Localidad"
+                                variant="outlined"
+                                value={values.localidad}
+                                name="localidad"
+                                onChange={handleChange}
+                                required
+                            />
+                            {
+                                errors.localidad && touched.localidad && errors.localidad
+                            }
+
+                        </Box>
+
+                        <Box sx={{mb:3}}>
                             <Select
                                 fullWidth
                                 label="Zona"
@@ -184,16 +230,15 @@ const RegistroPrestador = () => {
                             }
 
                         </Box>
-
                         <Button type="submit" variant="contained" color="primary">
-                            Registrarse
+                            {loading ? <CircularProgress size={24} color="inherit" /> : "Registrarse"}
                         </Button>
                         <Button
                             sx={{ml:2}}
                             variant="contained"
                             color="primary"
                             onClick={() => enviarId(values)}
-                            disabled={errors.cuit || touched.cuit}
+                            disabled={values.cuit==''}
                         >
                             Recordar ID
                         </Button>
